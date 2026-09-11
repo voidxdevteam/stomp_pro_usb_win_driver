@@ -123,7 +123,8 @@ using DllGetClassObjectFunction = HRESULT(__stdcall*)(REFCLSID, REFIID, void**);
 
 int wmain(int argc, wchar_t** argv) {
     const std::filesystem::path executable = argc > 0 ? argv[0] : L".";
-    const std::filesystem::path dllPath = argc > 1
+    const bool useRegistration = argc > 1 && std::wstring(argv[1]) == L"--registered";
+    const std::filesystem::path dllPath = argc > 1 && !useRegistration
         ? std::filesystem::path(argv[1])
         : executable.parent_path() / L"SonulabASIO.dll";
     const int seconds = argc > 2 ? std::max(1, _wtoi(argv[2])) : 10;
@@ -132,30 +133,41 @@ int wmain(int argc, wchar_t** argv) {
     }
 
     const HRESULT coHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    HMODULE module = LoadLibraryW(dllPath.c_str());
-    if (!module) {
-        std::wcerr << L"Unable to load " << dllPath << L" (Win32 " << GetLastError() << L")\n";
-        return 1;
-    }
-
-    const auto getClassObject = reinterpret_cast<DllGetClassObjectFunction>(
-        GetProcAddress(module, "DllGetClassObject"));
-    if (!getClassObject) {
-        std::cerr << "DllGetClassObject export is missing\n";
-        FreeLibrary(module);
-        return 1;
-    }
-
-    IClassFactory* factory = nullptr;
-    HRESULT hr = getClassObject(CLSID_SonulabASIO, IID_IClassFactory, reinterpret_cast<void**>(&factory));
+    HMODULE module = nullptr;
     IASIO* driver = nullptr;
-    if (SUCCEEDED(hr)) {
-        hr = factory->CreateInstance(nullptr, CLSID_SonulabASIO, reinterpret_cast<void**>(&driver));
-        factory->Release();
+    HRESULT hr = E_FAIL;
+    if (useRegistration) {
+        hr = CoCreateInstance(
+            CLSID_SonulabASIO,
+            nullptr,
+            CLSCTX_INPROC_SERVER,
+            CLSID_SonulabASIO,
+            reinterpret_cast<void**>(&driver));
+    } else {
+        module = LoadLibraryW(dllPath.c_str());
+        if (!module) {
+            std::wcerr << L"Unable to load " << dllPath << L" (Win32 " << GetLastError() << L")\n";
+            return 1;
+        }
+
+        const auto getClassObject = reinterpret_cast<DllGetClassObjectFunction>(
+            GetProcAddress(module, "DllGetClassObject"));
+        if (!getClassObject) {
+            std::cerr << "DllGetClassObject export is missing\n";
+            FreeLibrary(module);
+            return 1;
+        }
+
+        IClassFactory* factory = nullptr;
+        hr = getClassObject(CLSID_SonulabASIO, IID_IClassFactory, reinterpret_cast<void**>(&factory));
+        if (SUCCEEDED(hr)) {
+            hr = factory->CreateInstance(nullptr, CLSID_SonulabASIO, reinterpret_cast<void**>(&driver));
+            factory->Release();
+        }
     }
     if (FAILED(hr) || !driver) {
         std::cerr << "Unable to instantiate Sonulab ASIO (HRESULT 0x" << std::hex << hr << ")\n";
-        FreeLibrary(module);
+        if (module) FreeLibrary(module);
         return 1;
     }
 
@@ -164,7 +176,7 @@ int wmain(int argc, wchar_t** argv) {
         driver->getErrorMessage(error);
         std::cerr << "Driver initialization failed: " << error << '\n';
         driver->Release();
-        FreeLibrary(module);
+        if (module) FreeLibrary(module);
         return 2;
     }
 
@@ -184,7 +196,7 @@ int wmain(int argc, wchar_t** argv) {
         std::cerr << "Stream start failed: " << error << " (ASIO " << asioError << ")\n";
         driver->disposeBuffers();
         driver->Release();
-        FreeLibrary(module);
+        if (module) FreeLibrary(module);
         return 3;
     }
 
@@ -200,9 +212,12 @@ int wmain(int argc, wchar_t** argv) {
     driver->stop();
     driver->disposeBuffers();
     driver->Release();
-    const HRESULT unloadResult = reinterpret_cast<HRESULT(__stdcall*)()>(
-        GetProcAddress(module, "DllCanUnloadNow"))();
-    FreeLibrary(module);
+    HRESULT unloadResult = S_OK;
+    if (module) {
+        unloadResult = reinterpret_cast<HRESULT(__stdcall*)()>(
+            GetProcAddress(module, "DllCanUnloadNow"))();
+        FreeLibrary(module);
+    }
     if (SUCCEEDED(coHr)) {
         CoUninitialize();
     }
@@ -215,7 +230,7 @@ int wmain(int argc, wchar_t** argv) {
               << " max_gap_ms=" << static_cast<double>(gMaximumGapNs.load()) / 1'000'000.0
               << " overloads=" << gOverloads.load()
               << " capture_peak=" << gCapturePeak.load()
-              << " dll_unload=" << (unloadResult == S_OK ? "yes" : "no") << '\n';
+              << " dll_unload=" << (useRegistration ? "registry" : (unloadResult == S_OK ? "yes" : "no")) << '\n';
     const bool callbackRateOk = callbackCount >= expectedCallbacks * 95 / 100;
     return callbackRateOk && gLateCallbacks.load() == 0 && gOverloads.load() == 0 ? 0 : 4;
 }

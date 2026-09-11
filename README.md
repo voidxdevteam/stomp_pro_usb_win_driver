@@ -42,7 +42,7 @@ is connected to In 1, `capture_peak` should be nonzero.
 
 ## Register for ASIO hosts
 
-Run an elevated PowerShell and execute:
+Run the command below; Windows will request administrator approval:
 
 ```powershell
 .\tools\register-driver.ps1
@@ -51,10 +51,15 @@ Run an elevated PowerShell and execute:
 The driver appears as `Sonulab ASIO`. Use `unregister-driver.ps1` to remove it.
 Only 64-bit ASIO hosts are supported by this prototype.
 
+To test the same COM registration path used by an ASIO host:
+
+```powershell
+.\build\Release\sonulab_asio_smoke.exe --registered 20 256
+```
+
 ## Distribution
 
 The ASIO SDK in `third_party/asio` is separately licensed by Steinberg. Before
 shipping a closed-source commercial build, Sonulab must obtain and comply with
 Steinberg's proprietary ASIO SDK license. The SDK also offers GPLv3 terms for a
 compatible open-source distribution.
-
