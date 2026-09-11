@@ -57,6 +57,18 @@ The smoke test opens both directions, outputs a 200 Hz tone, reads both capture
 channels, and reports callback timing and discontinuity notifications. With
 Out 1 connected to In 1, `capture_peak` should be nonzero.
 
+To retain and validate the complete captured waveform, pass a WAV path as the
+last argument and analyze it after the run:
+
+```powershell
+.\build\Release\sonulab_asio_smoke.exe .\build\Release\SonulabStompProDriver.dll 3600 256 .\test-results\loopback-60min.wav
+python .\tools\analyze-sine-recording.py .\test-results\loopback-60min.wav
+```
+
+Recording uses a preallocated single-producer/single-consumer queue. The audio
+callback only copies capture samples into that queue; a separate thread writes
+the WAV file. The final `record_dropped_blocks` value must be zero.
+
 ## Install for audio hosts
 
 Close audio applications and run the unsigned installer:

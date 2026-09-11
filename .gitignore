@@ -2,5 +2,6 @@
 /.vs/
 /out/
 /dist/
+/test-results/
 *.user
 *.suo

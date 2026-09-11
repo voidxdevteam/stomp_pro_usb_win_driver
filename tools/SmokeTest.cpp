@@ -13,10 +13,14 @@
 #include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <string>
+#include <thread>
 
 namespace {
 constexpr double kSampleRate = 48000.0;
@@ -31,6 +35,149 @@ std::atomic<std::uint64_t> gLastCallbackNs{0};
 std::atomic<std::uint64_t> gMaximumGapNs{0};
 std::atomic<std::int32_t> gCapturePeak{0};
 std::atomic<std::uint64_t> gOverloads{0};
+
+class WaveRecorder {
+public:
+    static constexpr std::size_t kMaximumFrames = 512;
+    static constexpr std::size_t kQueueBlocks = 2048;
+
+    bool start(const std::filesystem::path& path) {
+        if (gBlockFrames <= 0 || gBlockFrames > static_cast<long>(kMaximumFrames)) {
+            return false;
+        }
+        if (path.has_parent_path()) {
+            std::error_code error;
+            std::filesystem::create_directories(path.parent_path(), error);
+            if (error) {
+                return false;
+            }
+        }
+        file_.open(path, std::ios::binary | std::ios::trunc);
+        if (!file_) {
+            return false;
+        }
+        blocks_ = std::make_unique<Block[]>(kQueueBlocks);
+        outputPath_ = path;
+        writeHeader(0);
+        if (!file_) {
+            return false;
+        }
+        writer_ = std::thread([this] { writerLoop(); });
+        return true;
+    }
+
+    void enqueue(const std::int32_t* left, const std::int32_t* right, long frames) noexcept {
+        const auto write = writeSequence_.load(std::memory_order_relaxed);
+        const auto read = readSequence_.load(std::memory_order_acquire);
+        if (write - read >= kQueueBlocks || frames <= 0 ||
+            frames > static_cast<long>(kMaximumFrames)) {
+            droppedBlocks_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+
+        auto& block = blocks_[write % kQueueBlocks];
+        block.frames = static_cast<std::uint32_t>(frames);
+        for (long frame = 0; frame < frames; ++frame) {
+            block.samples[static_cast<std::size_t>(frame) * 2] = left[frame];
+            block.samples[static_cast<std::size_t>(frame) * 2 + 1] = right[frame];
+        }
+        writeSequence_.store(write + 1, std::memory_order_release);
+    }
+
+    bool stop() {
+        stopping_.store(true, std::memory_order_release);
+        if (writer_.joinable()) {
+            writer_.join();
+        }
+        if (file_) {
+            file_.seekp(0, std::ios::beg);
+            writeHeader(framesWritten_);
+            file_.flush();
+        }
+        const bool ok = file_.good() && !writeFailed_.load(std::memory_order_relaxed);
+        file_.close();
+        return ok;
+    }
+
+    std::uint64_t framesWritten() const noexcept { return framesWritten_; }
+    std::uint64_t droppedBlocks() const noexcept {
+        return droppedBlocks_.load(std::memory_order_relaxed);
+    }
+    const std::filesystem::path& outputPath() const noexcept { return outputPath_; }
+
+private:
+#pragma pack(push, 1)
+    struct WaveHeader {
+        char riff[4]{'R', 'I', 'F', 'F'};
+        std::uint32_t riffSize{};
+        char wave[4]{'W', 'A', 'V', 'E'};
+        char fmt[4]{'f', 'm', 't', ' '};
+        std::uint32_t fmtSize{16};
+        std::uint16_t format{1};
+        std::uint16_t channels{2};
+        std::uint32_t sampleRate{48000};
+        std::uint32_t byteRate{48000 * 2 * sizeof(std::int32_t)};
+        std::uint16_t blockAlign{2 * sizeof(std::int32_t)};
+        std::uint16_t bitsPerSample{32};
+        char data[4]{'d', 'a', 't', 'a'};
+        std::uint32_t dataSize{};
+    };
+#pragma pack(pop)
+
+    struct Block {
+        std::uint32_t frames{};
+        std::array<std::int32_t, kMaximumFrames * 2> samples{};
+    };
+
+    void writeHeader(std::uint64_t frames) {
+        const auto bytes = frames * 2 * sizeof(std::int32_t);
+        if (bytes > std::numeric_limits<std::uint32_t>::max() - 36) {
+            writeFailed_.store(true, std::memory_order_relaxed);
+            return;
+        }
+        WaveHeader header{};
+        header.dataSize = static_cast<std::uint32_t>(bytes);
+        header.riffSize = 36 + header.dataSize;
+        file_.write(reinterpret_cast<const char*>(&header), sizeof(header));
+    }
+
+    void writerLoop() {
+        for (;;) {
+            const auto read = readSequence_.load(std::memory_order_relaxed);
+            const auto write = writeSequence_.load(std::memory_order_acquire);
+            if (read == write) {
+                if (stopping_.load(std::memory_order_acquire)) {
+                    break;
+                }
+                Sleep(1);
+                continue;
+            }
+
+            const auto& block = blocks_[read % kQueueBlocks];
+            const auto bytes = static_cast<std::streamsize>(
+                static_cast<std::size_t>(block.frames) * 2 * sizeof(std::int32_t));
+            file_.write(reinterpret_cast<const char*>(block.samples.data()), bytes);
+            if (!file_) {
+                writeFailed_.store(true, std::memory_order_relaxed);
+            }
+            framesWritten_ += block.frames;
+            readSequence_.store(read + 1, std::memory_order_release);
+        }
+    }
+
+    std::unique_ptr<Block[]> blocks_;
+    std::ofstream file_;
+    std::filesystem::path outputPath_;
+    std::thread writer_;
+    std::atomic<std::uint64_t> writeSequence_{0};
+    std::atomic<std::uint64_t> readSequence_{0};
+    std::atomic<std::uint64_t> droppedBlocks_{0};
+    std::atomic<bool> stopping_{false};
+    std::atomic<bool> writeFailed_{false};
+    std::uint64_t framesWritten_{0};
+};
+
+std::unique_ptr<WaveRecorder> gRecorder;
 
 std::uint64_t qpcNanoseconds() {
     LARGE_INTEGER counter{};
@@ -89,6 +236,9 @@ void processBuffer(long index) {
             gPhase -= 2.0 * kPi;
         }
     }
+    if (gRecorder) {
+        gRecorder->enqueue(inputLeft, inputRight, gBlockFrames);
+    }
     gCallbacks.fetch_add(1, std::memory_order_relaxed);
 }
 
@@ -133,6 +283,13 @@ int wmain(int argc, wchar_t** argv) {
     const int seconds = argc > 2 ? std::max(1, _wtoi(argv[2])) : 10;
     if (argc > 3) {
         gBlockFrames = _wtoi(argv[3]);
+    }
+    const std::filesystem::path recordingPath = argc > 4
+        ? std::filesystem::path(argv[4])
+        : std::filesystem::path{};
+    if (gBlockFrames <= 0 || gBlockFrames > static_cast<long>(WaveRecorder::kMaximumFrames)) {
+        std::cerr << "Buffer size must be between 1 and " << WaveRecorder::kMaximumFrames << " frames\n";
+        return 1;
     }
 
     const HRESULT coHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -191,6 +348,18 @@ int wmain(int argc, wchar_t** argv) {
     ASIOCallbacks callbacks{bufferSwitch, sampleRateDidChange, asioMessage, bufferSwitchTimeInfo};
     ASIOError asioError = driver->createBuffers(
         gBuffers.data(), static_cast<long>(gBuffers.size()), gBlockFrames, &callbacks);
+    if (asioError == ASE_OK && !recordingPath.empty()) {
+        gRecorder = std::make_unique<WaveRecorder>();
+        if (!gRecorder->start(recordingPath)) {
+            std::wcerr << L"Unable to create recording " << recordingPath << L'\n';
+            gRecorder.reset();
+            driver->disposeBuffers();
+            driver->Release();
+            if (module) FreeLibrary(module);
+            if (SUCCEEDED(coHr)) CoUninitialize();
+            return 5;
+        }
+    }
     if (asioError == ASE_OK) {
         asioError = driver->start();
     }
@@ -198,6 +367,10 @@ int wmain(int argc, wchar_t** argv) {
         char error[124]{};
         driver->getErrorMessage(error);
         std::cerr << "Stream start failed: " << error << " (ASIO " << asioError << ")\n";
+        if (gRecorder) {
+            gRecorder->stop();
+            gRecorder.reset();
+        }
         driver->disposeBuffers();
         driver->Release();
         if (module) FreeLibrary(module);
@@ -214,6 +387,16 @@ int wmain(int argc, wchar_t** argv) {
     Sleep(static_cast<DWORD>(seconds * 1000));
 
     driver->stop();
+    std::uint64_t recordedFrames = 0;
+    std::uint64_t droppedRecordBlocks = 0;
+    bool recordingOk = true;
+    if (gRecorder) {
+        recordingOk = gRecorder->stop();
+        recordedFrames = gRecorder->framesWritten();
+        droppedRecordBlocks = gRecorder->droppedBlocks();
+        std::wcout << L"recording=" << gRecorder->outputPath() << L'\n';
+        gRecorder.reset();
+    }
     driver->disposeBuffers();
     driver->Release();
     HRESULT unloadResult = S_OK;
@@ -234,7 +417,14 @@ int wmain(int argc, wchar_t** argv) {
               << " max_gap_ms=" << static_cast<double>(gMaximumGapNs.load()) / 1'000'000.0
               << " overloads=" << gOverloads.load()
               << " capture_peak=" << gCapturePeak.load()
+              << " recorded_frames=" << recordedFrames
+              << " record_dropped_blocks=" << droppedRecordBlocks
+              << " recording_ok=" << (recordingOk ? "yes" : "no")
               << " dll_unload=" << (useRegistration ? "registry" : (unloadResult == S_OK ? "yes" : "no")) << '\n';
     const bool callbackRateOk = callbackCount >= expectedCallbacks * 95 / 100;
-    return callbackRateOk && gLateCallbacks.load() == 0 && gOverloads.load() == 0 ? 0 : 4;
+    const bool recordingComplete = recordingPath.empty() ||
+        (recordingOk && droppedRecordBlocks == 0 &&
+         recordedFrames >= callbackCount * static_cast<std::uint64_t>(gBlockFrames) * 99 / 100);
+    return callbackRateOk && gLateCallbacks.load() == 0 && gOverloads.load() == 0 &&
+        recordingComplete ? 0 : 4;
 }
