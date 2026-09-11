@@ -1,26 +1,43 @@
-# Sonulab ASIO
+# Sonulab StompPRO USB Driver
 
-Windows x64 ASIO driver prototype for the Sonulab StompPRO USB Audio 2.0 interface.
+Open-source Windows x64 audio driver for the Sonulab StompPRO USB Audio 2.0
+interface. The project is licensed under GNU GPL version 3 only.
 
-The ASIO DLL uses the native Windows USB Audio 2.0 driver through exclusive,
-event-driven WASAPI. It exposes one full-duplex ASIO device with:
+The driver exposes one full-duplex, ASIO-compatible device and uses the native
+Windows USB Audio 2.0 stack through exclusive, event-driven WASAPI:
 
 - 2 capture channels and 2 playback channels;
 - 48 kHz, signed 32-bit little-endian PCM;
-- 128, 256, or 512-sample ASIO buffers;
-- one device clock;
-- endpoint selection by USB hardware ID `VID_1D6B&PID_0104`.
+- 128, 256, or 512-sample host buffers;
+- one hardware clock;
+- endpoint selection through the USB PnP hierarchy using `VID_1D6B&PID_0104`;
+- MMCSS `Pro Audio` scheduling for the callback thread.
 
-The Windows mixer and sample-rate conversion are bypassed. The USB transport
-continues to use Microsoft's `usbaudio2.sys`; this project does not install a
+The Windows mixer and sample-rate conversion are bypassed. USB transport is
+provided by Microsoft's `usbaudio2.sys`; this project does not install a
 kernel-mode driver.
+
+## License
+
+Sonulab's source code is licensed under `GPL-3.0-only`; see [LICENSE](LICENSE).
+The ASIO SDK interface files under `third_party/asio` are copyright Steinberg
+Media Technologies GmbH and are used under their GPLv3 option. Their original
+notices and license are retained.
+
+ASIO is a trademark and software of Steinberg Media Technologies GmbH. The
+trademark is used only to describe compatibility. It is not part of this
+product's name, and no ASIO logo is distributed.
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the exact SDK version,
+official source URL, archive hash, and vendored files.
 
 ## Build
 
-Requirements: Windows 10/11, Visual Studio 2022 with the Desktop C++ workload,
-CMake 3.24 or newer, and the Steinberg ASIO SDK under `third_party/asio`.
+Requirements: Windows 10 or 11, Visual Studio 2022 with the Desktop C++
+workload, and CMake 3.24 or newer.
 
-From PowerShell:
+The required ASIO SDK 2.3.4 interface files are included, so the repository is
+self-contained:
 
 ```powershell
 .\tools\build.ps1
@@ -33,33 +50,40 @@ The x64 DLL and smoke-test executable are written to `build\Release`.
 Connect the StompPRO, then run:
 
 ```powershell
-.\build\Release\sonulab_asio_smoke.exe .\build\Release\SonulabASIO.dll 20 256
+.\build\Release\sonulab_asio_smoke.exe .\build\Release\SonulabStompProDriver.dll 20 256
 ```
 
 The smoke test opens both directions, outputs a 200 Hz tone, reads both capture
-channels, and reports callback timing and discontinuity notifications. If Out 1
-is connected to In 1, `capture_peak` should be nonzero.
+channels, and reports callback timing and discontinuity notifications. With
+Out 1 connected to In 1, `capture_peak` should be nonzero.
 
-## Register for ASIO hosts
+## Install for audio hosts
 
-Run the command below; Windows will request administrator approval:
+Close audio applications, then run:
 
 ```powershell
 .\tools\register-driver.ps1
 ```
 
-The driver appears as `Sonulab ASIO`. Use `unregister-driver.ps1` to remove it.
-Only 64-bit ASIO hosts are supported by this prototype.
+Windows requests administrator approval. The driver then appears as
+`Sonulab StompPRO USB Driver` in compatible audio hosts. Only 64-bit hosts are
+supported by this release.
 
-To test the same COM registration path used by an ASIO host:
+Test the same COM registration path used by an audio host with:
 
 ```powershell
 .\build\Release\sonulab_asio_smoke.exe --registered 20 256
 ```
 
-## Distribution
+Remove the registration with:
 
-The ASIO SDK in `third_party/asio` is separately licensed by Steinberg. Before
-shipping a closed-source commercial build, Sonulab must obtain and comply with
-Steinberg's proprietary ASIO SDK license. The SDK also offers GPLv3 terms for a
-compatible open-source distribution.
+```powershell
+.\tools\unregister-driver.ps1
+```
+
+## Distributing binaries
+
+Every distributed DLL must be accompanied by access to the complete
+corresponding source for that exact release, including this repository, the
+vendored ASIO SDK interface files, and the build and installation scripts.
+A practical release should publish the source tag and binaries together.

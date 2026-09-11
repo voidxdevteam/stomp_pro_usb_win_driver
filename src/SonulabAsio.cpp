@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Sonulab
+// SPDX-License-Identifier: GPL-3.0-only
+
 #include "SonulabAsio.hpp"
 
 #include "SonulabIds.hpp"
@@ -53,7 +56,7 @@ ASIOBool SonulabAsio::init(void* sysHandle) {
 }
 
 void SonulabAsio::getDriverName(char* name) {
-    copyAsioString(name, 32, "Sonulab ASIO");
+    copyAsioString(name, 32, "Sonulab StompPRO USB");
 }
 
 long SonulabAsio::getDriverVersion() {
@@ -267,12 +270,16 @@ ASIOError SonulabAsio::disposeBuffers() {
 
 ASIOError SonulabAsio::controlPanel() {
     const std::string message =
-        "Sonulab StompPRO ASIO\n\n"
+        "Sonulab StompPRO USB Driver\n\n"
+        "ASIO-compatible interface\n"
         "USB Audio 2.0 full duplex\n"
         "2 inputs / 2 outputs\n"
         "48 kHz, 32-bit\n"
-        "Buffer: " + std::to_string(blockFrames_) + " samples";
-    MessageBoxA(nullptr, message.c_str(), "Sonulab ASIO", MB_OK | MB_ICONINFORMATION);
+        "Buffer: " + std::to_string(blockFrames_) + " samples\n\n"
+        "Copyright (C) 2026 Sonulab\n"
+        "GNU GPLv3; distributed without warranty.\n"
+        "ASIO is a trademark and software of Steinberg Media Technologies GmbH.";
+    MessageBoxA(nullptr, message.c_str(), "Sonulab StompPRO USB Driver", MB_OK | MB_ICONINFORMATION);
     return ASE_OK;
 }
 

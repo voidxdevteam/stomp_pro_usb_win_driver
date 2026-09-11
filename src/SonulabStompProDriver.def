@@ -1,4 +1,7 @@
-LIBRARY "SonulabASIO"
+; SPDX-FileCopyrightText: 2026 Sonulab
+; SPDX-License-Identifier: GPL-3.0-only
+
+LIBRARY "SonulabStompProDriver"
 EXPORTS
     DllCanUnloadNow PRIVATE
     DllGetClassObject PRIVATE

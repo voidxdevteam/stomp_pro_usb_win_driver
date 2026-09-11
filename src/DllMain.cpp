@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Sonulab
+// SPDX-License-Identifier: GPL-3.0-only
+
 #include "SonulabAsio.hpp"
 
 #include "SonulabIds.hpp"
@@ -101,7 +104,7 @@ HRESULT registerDriver() {
     if (status != ERROR_SUCCESS) {
         return registryResult(status);
     }
-    status = setString(clsidKey, nullptr, kSonulabAsioDescription);
+    status = setString(clsidKey, nullptr, kSonulabDriverDescription);
     HKEY serverKey = nullptr;
     if (status == ERROR_SUCCESS) {
         status = RegCreateKeyExW(
@@ -121,7 +124,8 @@ HRESULT registerDriver() {
         return registryResult(status);
     }
 
-    const std::wstring asioPath = std::wstring(L"SOFTWARE\\ASIO\\") + kSonulabAsioRegistryName;
+    RegDeleteTreeW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\ASIO\\Sonulab ASIO");
+    const std::wstring asioPath = std::wstring(L"SOFTWARE\\ASIO\\") + kSonulabDriverRegistryName;
     HKEY asioKey = nullptr;
     status = RegCreateKeyExW(
         HKEY_LOCAL_MACHINE, asioPath.c_str(), 0, nullptr, 0, KEY_WRITE, nullptr, &asioKey, nullptr);
@@ -129,7 +133,7 @@ HRESULT registerDriver() {
         status = setString(asioKey, L"CLSID", clsidText);
     }
     if (status == ERROR_SUCCESS) {
-        status = setString(asioKey, L"Description", kSonulabAsioDescription);
+        status = setString(asioKey, L"Description", kSonulabDriverDescription);
     }
     if (asioKey) {
         RegCloseKey(asioKey);
@@ -143,9 +147,10 @@ HRESULT unregisterDriver() {
         return E_FAIL;
     }
     const std::wstring clsidPath = std::wstring(L"SOFTWARE\\Classes\\CLSID\\") + clsidText;
-    const std::wstring asioPath = std::wstring(L"SOFTWARE\\ASIO\\") + kSonulabAsioRegistryName;
+    const std::wstring asioPath = std::wstring(L"SOFTWARE\\ASIO\\") + kSonulabDriverRegistryName;
     const LSTATUS clsidStatus = RegDeleteTreeW(HKEY_LOCAL_MACHINE, clsidPath.c_str());
     const LSTATUS asioStatus = RegDeleteTreeW(HKEY_LOCAL_MACHINE, asioPath.c_str());
+    RegDeleteTreeW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\ASIO\\Sonulab ASIO");
     if (clsidStatus != ERROR_SUCCESS && clsidStatus != ERROR_FILE_NOT_FOUND) {
         return registryResult(clsidStatus);
     }
@@ -202,4 +207,3 @@ extern "C" HRESULT __stdcall DllRegisterServer() {
 extern "C" HRESULT __stdcall DllUnregisterServer() {
     return unregisterDriver();
 }
-

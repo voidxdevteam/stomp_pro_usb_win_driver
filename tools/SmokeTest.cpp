@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Sonulab
+// SPDX-License-Identifier: GPL-3.0-only
+
 #include "SonulabIds.hpp"
 
 #include <windows.h>
@@ -126,7 +129,7 @@ int wmain(int argc, wchar_t** argv) {
     const bool useRegistration = argc > 1 && std::wstring(argv[1]) == L"--registered";
     const std::filesystem::path dllPath = argc > 1 && !useRegistration
         ? std::filesystem::path(argv[1])
-        : executable.parent_path() / L"SonulabASIO.dll";
+        : executable.parent_path() / L"SonulabStompProDriver.dll";
     const int seconds = argc > 2 ? std::max(1, _wtoi(argv[2])) : 10;
     if (argc > 3) {
         gBlockFrames = _wtoi(argv[3]);
@@ -166,7 +169,8 @@ int wmain(int argc, wchar_t** argv) {
         }
     }
     if (FAILED(hr) || !driver) {
-        std::cerr << "Unable to instantiate Sonulab ASIO (HRESULT 0x" << std::hex << hr << ")\n";
+        std::cerr << "Unable to instantiate Sonulab StompPRO USB Driver (HRESULT 0x"
+                  << std::hex << hr << ")\n";
         if (module) FreeLibrary(module);
         return 1;
     }
