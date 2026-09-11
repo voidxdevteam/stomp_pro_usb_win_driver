@@ -13,8 +13,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 
 using Microsoft::WRL::ComPtr;
@@ -24,6 +26,36 @@ constexpr std::uint32_t kSampleRate = 48000;
 constexpr std::uint32_t kChannels = 2;
 constexpr std::uint32_t kBytesPerSample = 4;
 constexpr REFERENCE_TIME kReferenceTimePerSecond = 10'000'000;
+
+std::atomic<std::uint64_t> gCapturePackets{0};
+std::atomic<std::uint64_t> gCaptureFrames{0};
+std::atomic<std::uint64_t> gCaptureRawZeroFrames{0};
+std::atomic<std::uint64_t> gCaptureSilentFrames{0};
+std::atomic<std::uint64_t> gCaptureDiscontinuities{0};
+std::atomic<std::uint64_t> gInputUnderflowFrames{0};
+std::atomic<std::uint64_t> gRenderEvents{0};
+std::atomic<std::uint64_t> gRenderTimeouts{0};
+std::atomic<std::uint64_t> gRenderUnderflowFrames{0};
+std::atomic<std::int64_t> gMinimumCaptureLevel{std::numeric_limits<std::int64_t>::max()};
+std::atomic<std::int64_t> gMaximumCaptureLevel{0};
+std::atomic<std::int64_t> gMinimumRatePpm{0};
+std::atomic<std::int64_t> gMaximumRatePpm{0};
+
+template <typename T>
+void updateMinimum(std::atomic<T>& target, T value) noexcept {
+    auto previous = target.load(std::memory_order_relaxed);
+    while (value < previous &&
+           !target.compare_exchange_weak(previous, value, std::memory_order_relaxed)) {
+    }
+}
+
+template <typename T>
+void updateMaximum(std::atomic<T>& target, T value) noexcept {
+    auto previous = target.load(std::memory_order_relaxed);
+    while (value > previous &&
+           !target.compare_exchange_weak(previous, value, std::memory_order_relaxed)) {
+    }
+}
 
 WAVEFORMATEXTENSIBLE makeFormat() {
     WAVEFORMATEXTENSIBLE format{};
@@ -155,6 +187,50 @@ std::size_t WasapiBackend::FrameRing::pop(std::int32_t* interleaved, std::size_t
     }
     sizeFrames_ -= count;
     return count;
+}
+
+std::size_t WasapiBackend::FrameRing::resamplePop(
+    std::int32_t* interleaved,
+    std::size_t outputFrames,
+    double inputFramesPerOutputFrame,
+    double& phase) noexcept {
+    if (!interleaved || outputFrames == 0 || capacityFrames_ == 0 ||
+        inputFramesPerOutputFrame <= 0.0 || phase < 0.0 || phase >= 1.0) {
+        return 0;
+    }
+
+    const double lastPosition =
+        phase + static_cast<double>(outputFrames - 1) * inputFramesPerOutputFrame;
+    const std::size_t requiredFrames = static_cast<std::size_t>(lastPosition) + 2;
+    if (requiredFrames > sizeFrames_) {
+        return 0;
+    }
+
+    for (std::size_t frame = 0; frame < outputFrames; ++frame) {
+        const double position = phase + static_cast<double>(frame) * inputFramesPerOutputFrame;
+        const std::size_t firstOffset = static_cast<std::size_t>(position);
+        const std::size_t secondOffset = firstOffset + 1;
+        const double fraction = position - static_cast<double>(firstOffset);
+        const std::size_t firstFrame = (readFrame_ + firstOffset) % capacityFrames_;
+        const std::size_t secondFrame = (readFrame_ + secondOffset) % capacityFrames_;
+        for (std::size_t channel = 0; channel < kChannels; ++channel) {
+            const double first = static_cast<double>(data_[firstFrame * kChannels + channel]);
+            const double second = static_cast<double>(data_[secondFrame * kChannels + channel]);
+            const double value = first + (second - first) * fraction;
+            interleaved[frame * kChannels + channel] = static_cast<std::int32_t>(std::clamp(
+                std::llround(value),
+                static_cast<long long>(std::numeric_limits<std::int32_t>::min()),
+                static_cast<long long>(std::numeric_limits<std::int32_t>::max())));
+        }
+    }
+
+    const double nextPosition =
+        phase + static_cast<double>(outputFrames) * inputFramesPerOutputFrame;
+    const std::size_t consumedFrames = static_cast<std::size_t>(nextPosition);
+    phase = nextPosition - static_cast<double>(consumedFrames);
+    readFrame_ = (readFrame_ + consumedFrames) % capacityFrames_;
+    sizeFrames_ -= consumedFrames;
+    return outputFrames;
 }
 
 bool WasapiBackend::probe(std::string& error) {
@@ -362,6 +438,23 @@ bool WasapiBackend::open(std::uint32_t asioBlockFrames, CycleCallback callback, 
         0);
     samplePosition_ = 0;
     pendingDiscontinuity_ = false;
+    captureTargetFrames_ =
+        static_cast<std::size_t>(asioBlockFrames_) * 2 + captureEndpointFrames_;
+    captureLevelFiltered_ = static_cast<double>(captureTargetFrames_);
+    captureResamplePhase_ = 0.0;
+    gCapturePackets.store(0, std::memory_order_relaxed);
+    gCaptureFrames.store(0, std::memory_order_relaxed);
+    gCaptureRawZeroFrames.store(0, std::memory_order_relaxed);
+    gCaptureSilentFrames.store(0, std::memory_order_relaxed);
+    gCaptureDiscontinuities.store(0, std::memory_order_relaxed);
+    gInputUnderflowFrames.store(0, std::memory_order_relaxed);
+    gRenderEvents.store(0, std::memory_order_relaxed);
+    gRenderTimeouts.store(0, std::memory_order_relaxed);
+    gRenderUnderflowFrames.store(0, std::memory_order_relaxed);
+    gMinimumCaptureLevel.store(std::numeric_limits<std::int64_t>::max(), std::memory_order_relaxed);
+    gMaximumCaptureLevel.store(0, std::memory_order_relaxed);
+    gMinimumRatePpm.store(0, std::memory_order_relaxed);
+    gMaximumRatePpm.store(0, std::memory_order_relaxed);
     return true;
 }
 
@@ -377,13 +470,45 @@ bool WasapiBackend::start(std::string& error) {
     samplePosition_ = 0;
     pendingDiscontinuity_ = false;
 
+    // Capture and playback can expose slightly different effective clocks even
+    // when the UAC2 function advertises one nominal 48 kHz source. Prime the
+    // capture side to the latency reported to ASIO, then keep that reservoir
+    // centered with a very small adaptive resampling ratio.
+    HRESULT hr = captureClient_->Start();
+    if (FAILED(hr)) {
+        error = hresultMessage("Start capture stream", hr);
+        captureClient_->Reset();
+        return false;
+    }
+
+    const DWORD captureWaitMs = static_cast<DWORD>(std::max<std::uint32_t>(
+        1,
+        (captureEndpointFrames_ * 2'000U + kSampleRate - 1) / kSampleRate));
+    const ULONGLONG prefillDeadline = GetTickCount64() + 2'000;
+    bool startupDiscontinuity = false;
+    while (captureRing_.sizeFrames() < captureTargetFrames_ &&
+           GetTickCount64() < prefillDeadline) {
+        const DWORD waitResult = WaitForSingleObject(captureEvent_, captureWaitMs);
+        if (waitResult == WAIT_OBJECT_0) {
+            drainCapture(startupDiscontinuity);
+        } else if (waitResult == WAIT_FAILED) {
+            break;
+        }
+    }
+    if (captureRing_.sizeFrames() < captureTargetFrames_) {
+        captureClient_->Stop();
+        captureClient_->Reset();
+        error = "Capture stream did not provide enough data during startup";
+        return false;
+    }
+
+    captureLevelFiltered_ = static_cast<double>(captureRing_.sizeFrames());
+    captureResamplePhase_ = 0.0;
+    pendingDiscontinuity_ = false;
     running_.store(true);
     audioThread_ = std::thread(&WasapiBackend::threadMain, this);
 
-    HRESULT hr = renderClient_->Start();
-    if (SUCCEEDED(hr)) {
-        hr = captureClient_->Start();
-    }
+    hr = renderClient_->Start();
     if (FAILED(hr)) {
         error = hresultMessage("Start full-duplex stream", hr);
         stop();
@@ -461,6 +586,12 @@ void WasapiBackend::threadMain() {
             break;
         }
 
+        if (result == WAIT_OBJECT_0 + 1) {
+            gRenderEvents.fetch_add(1, std::memory_order_relaxed);
+        } else if (result == WAIT_TIMEOUT) {
+            gRenderTimeouts.fetch_add(1, std::memory_order_relaxed);
+        }
+
         bool discontinuity = pendingDiscontinuity_;
         drainCapture(discontinuity);
         pendingDiscontinuity_ = false;
@@ -506,9 +637,14 @@ void WasapiBackend::drainCapture(bool& discontinuity) noexcept {
 
         if ((flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0) {
             discontinuity = true;
+            gCaptureDiscontinuities.fetch_add(1, std::memory_order_relaxed);
         }
 
+        gCapturePackets.fetch_add(1, std::memory_order_relaxed);
+        gCaptureFrames.fetch_add(frames, std::memory_order_relaxed);
+
         if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 || bytes == nullptr) {
+            gCaptureSilentFrames.fetch_add(frames, std::memory_order_relaxed);
             std::size_t remaining = frames;
             std::fill(captureScratch_.begin(), captureScratch_.end(), 0);
             const std::size_t scratchFrames = captureScratch_.size() / kChannels;
@@ -518,7 +654,16 @@ void WasapiBackend::drainCapture(bool& discontinuity) noexcept {
                 remaining -= chunk;
             }
         } else {
-            captureRing_.push(reinterpret_cast<const std::int32_t*>(bytes), frames);
+            const auto* samples = reinterpret_cast<const std::int32_t*>(bytes);
+            std::uint64_t zeroFrames = 0;
+            for (UINT32 frame = 0; frame < frames; ++frame) {
+                if (samples[static_cast<std::size_t>(frame) * kChannels] == 0 &&
+                    samples[static_cast<std::size_t>(frame) * kChannels + 1] == 0) {
+                    ++zeroFrames;
+                }
+            }
+            gCaptureRawZeroFrames.fetch_add(zeroFrames, std::memory_order_relaxed);
+            captureRing_.push(samples, frames);
         }
         captureService_->ReleaseBuffer(frames);
         drainedFrames += frames;
@@ -563,6 +708,7 @@ void WasapiBackend::renderAvailableFrames(bool discontinuity, bool endpointEvent
     auto* samples = reinterpret_cast<std::int32_t*>(bytes);
     const std::size_t popped = renderRing_.pop(samples, available);
     if (popped < available) {
+        gRenderUnderflowFrames.fetch_add(available - popped, std::memory_order_relaxed);
         std::fill(
             samples + popped * kChannels,
             samples + static_cast<std::size_t>(available) * kChannels,
@@ -575,12 +721,39 @@ void WasapiBackend::renderAvailableFrames(bool discontinuity, bool endpointEvent
 }
 
 void WasapiBackend::makeAsioBlock(bool discontinuity) noexcept {
-    const std::size_t captured = captureRing_.pop(inputBlock_.data(), asioBlockFrames_);
+    const std::size_t available = captureRing_.sizeFrames();
+    updateMinimum(gMinimumCaptureLevel, static_cast<std::int64_t>(available));
+    updateMaximum(gMaximumCaptureLevel, static_cast<std::int64_t>(available));
+
+    constexpr double kLevelFilter = 0.01;
+    constexpr double kProportionalGain = 0.0005;
+    captureLevelFiltered_ +=
+        (static_cast<double>(available) - captureLevelFiltered_) * kLevelFilter;
+    const double levelErrorBlocks =
+        (captureLevelFiltered_ - static_cast<double>(captureTargetFrames_)) /
+        static_cast<double>(asioBlockFrames_);
+    const double captureRate = std::clamp(
+        1.0 + kProportionalGain * levelErrorBlocks,
+        0.998,
+        1.002);
+    const auto ratePpm = static_cast<std::int64_t>(std::llround((captureRate - 1.0) * 1'000'000.0));
+    updateMinimum(gMinimumRatePpm, ratePpm);
+    updateMaximum(gMaximumRatePpm, ratePpm);
+
+    const std::size_t captured = captureRing_.resamplePop(
+        inputBlock_.data(), asioBlockFrames_, captureRate, captureResamplePhase_);
     if (captured < asioBlockFrames_) {
-        std::fill(
-            inputBlock_.begin() + static_cast<std::ptrdiff_t>(captured * kChannels),
-            inputBlock_.end(),
-            0);
+        captureResamplePhase_ = 0.0;
+        const std::size_t fallback = captureRing_.pop(inputBlock_.data(), asioBlockFrames_);
+        if (fallback < asioBlockFrames_) {
+            discontinuity = true;
+            gInputUnderflowFrames.fetch_add(
+                asioBlockFrames_ - fallback, std::memory_order_relaxed);
+            std::fill(
+                inputBlock_.begin() + static_cast<std::ptrdiff_t>(fallback * kChannels),
+                inputBlock_.end(),
+                0);
+        }
     }
     std::fill(outputBlock_.begin(), outputBlock_.end(), 0);
 
@@ -611,4 +784,27 @@ std::string WasapiBackend::hresultMessage(const char* operation, HRESULT hr) {
     stream << operation << " failed (HRESULT 0x" << std::hex << std::uppercase
            << static_cast<unsigned long>(hr) << ')';
     return stream.str();
+}
+
+extern "C" __declspec(dllexport) void __stdcall SonulabGetDiagnostics(
+    std::uint64_t* values,
+    std::uint32_t valueCount) {
+    if (!values || valueCount < 12) {
+        return;
+    }
+    values[0] = gCapturePackets.load(std::memory_order_relaxed);
+    values[1] = gCaptureFrames.load(std::memory_order_relaxed);
+    values[2] = gCaptureRawZeroFrames.load(std::memory_order_relaxed);
+    values[3] = gCaptureSilentFrames.load(std::memory_order_relaxed);
+    values[4] = gCaptureDiscontinuities.load(std::memory_order_relaxed);
+    values[5] = gInputUnderflowFrames.load(std::memory_order_relaxed);
+    values[6] = gRenderEvents.load(std::memory_order_relaxed);
+    values[7] = gRenderTimeouts.load(std::memory_order_relaxed);
+    values[8] = gRenderUnderflowFrames.load(std::memory_order_relaxed);
+    values[9] = static_cast<std::uint64_t>(gMinimumCaptureLevel.load(std::memory_order_relaxed));
+    values[10] = static_cast<std::uint64_t>(gMaximumCaptureLevel.load(std::memory_order_relaxed));
+    const auto minPpm = static_cast<std::int32_t>(gMinimumRatePpm.load(std::memory_order_relaxed));
+    const auto maxPpm = static_cast<std::int32_t>(gMaximumRatePpm.load(std::memory_order_relaxed));
+    values[11] = static_cast<std::uint32_t>(minPpm) |
+        (static_cast<std::uint64_t>(static_cast<std::uint32_t>(maxPpm)) << 32);
 }

@@ -272,6 +272,7 @@ ASIOTime* bufferSwitchTimeInfo(ASIOTime* timeInfo, long index, ASIOBool) {
 }
 
 using DllGetClassObjectFunction = HRESULT(__stdcall*)(REFCLSID, REFIID, void**);
+using GetDiagnosticsFunction = void(__stdcall*)(std::uint64_t*, std::uint32_t);
 }
 
 int wmain(int argc, wchar_t** argv) {
@@ -399,6 +400,14 @@ int wmain(int argc, wchar_t** argv) {
     }
     driver->disposeBuffers();
     driver->Release();
+    std::array<std::uint64_t, 12> diagnostics{};
+    if (module) {
+        const auto getDiagnostics = reinterpret_cast<GetDiagnosticsFunction>(
+            GetProcAddress(module, "SonulabGetDiagnostics"));
+        if (getDiagnostics) {
+            getDiagnostics(diagnostics.data(), static_cast<std::uint32_t>(diagnostics.size()));
+        }
+    }
     HRESULT unloadResult = S_OK;
     if (module) {
         unloadResult = reinterpret_cast<HRESULT(__stdcall*)()>(
@@ -420,6 +429,19 @@ int wmain(int argc, wchar_t** argv) {
               << " recorded_frames=" << recordedFrames
               << " record_dropped_blocks=" << droppedRecordBlocks
               << " recording_ok=" << (recordingOk ? "yes" : "no")
+              << " capture_packets=" << diagnostics[0]
+              << " capture_frames=" << diagnostics[1]
+              << " capture_raw_zero_frames=" << diagnostics[2]
+              << " capture_silent_frames=" << diagnostics[3]
+              << " capture_discontinuities=" << diagnostics[4]
+              << " input_underflow_frames=" << diagnostics[5]
+              << " render_events=" << diagnostics[6]
+              << " render_timeouts=" << diagnostics[7]
+              << " render_underflow_frames=" << diagnostics[8]
+              << " capture_level_min=" << diagnostics[9]
+              << " capture_level_max=" << diagnostics[10]
+              << " rate_ppm_min=" << static_cast<std::int32_t>(diagnostics[11] & 0xffffffffU)
+              << " rate_ppm_max=" << static_cast<std::int32_t>(diagnostics[11] >> 32)
               << " dll_unload=" << (useRegistration ? "registry" : (unloadResult == S_OK ? "yes" : "no")) << '\n';
     const bool callbackRateOk = callbackCount >= expectedCallbacks * 95 / 100;
     const bool recordingComplete = recordingPath.empty() ||

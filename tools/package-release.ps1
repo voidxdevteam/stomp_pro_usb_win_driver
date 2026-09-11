@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$version = '0.2.0'
+$version = '0.2.1'
 $root = Split-Path -Parent $PSScriptRoot
 $dist = Join-Path $root 'dist'
 $binaryName = "Sonulab-StompPRO-USB-Driver-$version-win64"

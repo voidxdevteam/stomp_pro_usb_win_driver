@@ -11,6 +11,7 @@ Windows USB Audio 2.0 stack through exclusive, event-driven WASAPI:
 - 128, 256, or 512-sample host buffers;
 - one hardware clock;
 - endpoint selection through the USB PnP hierarchy using `VID_1D6B&PID_0104`;
+- adaptive capture clock synchronization for stable full-duplex operation;
 - MMCSS `Pro Audio` scheduling for the callback thread.
 
 The Windows mixer and sample-rate conversion are bypassed. USB transport is
@@ -67,13 +68,15 @@ python .\tools\analyze-sine-recording.py .\test-results\loopback-60min.wav
 
 Recording uses a preallocated single-producer/single-consumer queue. The audio
 callback only copies capture samples into that queue; a separate thread writes
-the WAV file. The final `record_dropped_blocks` value must be zero.
+the WAV file. The final `record_dropped_blocks` value must be zero. The analyzer
+checks every window for silence, clipping, amplitude changes, residual error,
+sample steps, phase jumps, and DC offset.
 
 ## Install for audio hosts
 
 Close audio applications and run the unsigned installer:
 
-`Sonulab-StompPRO-USB-Driver-0.2.0-Setup.exe`
+`Sonulab-StompPRO-USB-Driver-0.2.1-Setup.exe`
 
 Windows requests administrator approval. The installer copies and registers the
 driver, includes the GPL license and source reference, and adds a standard entry

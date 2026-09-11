@@ -48,6 +48,11 @@ private:
         [[nodiscard]] std::size_t freeFrames() const noexcept { return capacityFrames_ - sizeFrames_; }
         void push(const std::int32_t* interleaved, std::size_t frames) noexcept;
         std::size_t pop(std::int32_t* interleaved, std::size_t frames) noexcept;
+        std::size_t resamplePop(
+            std::int32_t* interleaved,
+            std::size_t outputFrames,
+            double inputFramesPerOutputFrame,
+            double& phase) noexcept;
 
     private:
         static constexpr std::size_t kChannels = 2;
@@ -98,4 +103,7 @@ private:
     std::vector<std::int32_t> captureScratch_;
     std::uint64_t samplePosition_ = 0;
     bool pendingDiscontinuity_ = false;
+    std::size_t captureTargetFrames_ = 0;
+    double captureLevelFiltered_ = 0.0;
+    double captureResamplePhase_ = 0.0;
 };

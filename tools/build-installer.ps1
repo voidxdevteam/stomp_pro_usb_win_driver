@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$version = '0.2.0'
+$version = '0.2.1'
 $root = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root 'build'
 $stage = Join-Path $build 'installer-stage'
