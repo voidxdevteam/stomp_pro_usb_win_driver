@@ -59,15 +59,23 @@ Out 1 connected to In 1, `capture_peak` should be nonzero.
 
 ## Install for audio hosts
 
-Close audio applications, then run:
+Close audio applications and run the unsigned installer:
+
+`Sonulab-StompPRO-USB-Driver-0.2.0-Setup.exe`
+
+Windows requests administrator approval. The installer copies and registers the
+driver, includes the GPL license and source reference, and adds a standard entry
+to Windows Installed apps for removal. Windows may display an unknown-publisher
+warning because the installer is intentionally unsigned.
+
+For development builds, the PowerShell registration script remains available:
 
 ```powershell
 .\tools\register-driver.ps1
 ```
 
-Windows requests administrator approval. The driver then appears as
-`Sonulab StompPRO USB Driver` in compatible audio hosts. Only 64-bit hosts are
-supported by this release.
+The driver appears as `Sonulab StompPRO USB Driver` in compatible audio hosts.
+Only 64-bit hosts are supported by this release.
 
 Test the same COM registration path used by an audio host with:
 
@@ -81,6 +89,16 @@ Remove the registration with:
 .\tools\unregister-driver.ps1
 ```
 
+## Build the installer
+
+Install Inno Setup 6, then run:
+
+```powershell
+.\tools\build-installer.ps1
+```
+
+The unsigned setup executable is written to `dist`. The full release script
+builds the DLL, binary ZIP, source ZIP, installer, and SHA-256 manifest together.
 ## Distributing binaries
 
 Every distributed DLL must be accompanied by access to the complete

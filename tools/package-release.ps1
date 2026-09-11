@@ -11,6 +11,7 @@ $sourceName = "Sonulab-StompPRO-USB-Driver-$version-source"
 $binaryStage = Join-Path $dist $binaryName
 $binaryZip = Join-Path $dist "$binaryName.zip"
 $sourceZip = Join-Path $dist "$sourceName.zip"
+$installer = Join-Path $dist "Sonulab-StompPRO-USB-Driver-$version-Setup.exe"
 
 & (Join-Path $PSScriptRoot 'build.ps1')
 
@@ -46,7 +47,9 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Unable to create source archive.'
 }
 
-$hashLines = foreach ($file in @($binaryZip, $sourceZip)) {
+& (Join-Path $PSScriptRoot 'build-installer.ps1') -SkipBuild
+
+$hashLines = foreach ($file in @($installer, $binaryZip, $sourceZip)) {
     $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $file
     "$($hash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($file))"
 }
