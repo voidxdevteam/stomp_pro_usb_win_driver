@@ -17,7 +17,7 @@ ASIO4ALL and additional USB audio drivers are not required.
 
 1. Close your music and audio applications.
 2. Connect and switch on StompPRO.
-3. Run `Sonulab-StompPRO-USB-Driver-0.3.0-Setup.exe`.
+3. Run `Sonulab-StompPRO-USB-Driver-0.3.1-Setup.exe`.
 4. Approve the Windows administrator request and complete the installation.
 5. Reopen your audio application and select `Sonulab StompPRO USB Driver` as
    its ASIO device.
@@ -49,7 +49,7 @@ Try these steps in order:
 5. If audio still stops or clicks, choose a 256- or 512-sample buffer and avoid
    unpowered USB hubs.
 
-If the driver does not appear in a 32-bit application, reinstall version 0.3.0.
+If the driver does not appear in a 32-bit application, reinstall version 0.3.1.
 The installer includes separate drivers for both 32-bit and 64-bit applications.
 
 ## Removal

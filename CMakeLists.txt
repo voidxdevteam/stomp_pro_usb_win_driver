@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 3.24)
 
-project(SonulabStompProUsbDriver VERSION 0.3.0 LANGUAGES CXX)
+project(SonulabStompProUsbDriver VERSION 0.3.1 LANGUAGES CXX)
 
 if(NOT WIN32)
     message(FATAL_ERROR "Sonulab StompPRO USB Driver is a Windows-only project")

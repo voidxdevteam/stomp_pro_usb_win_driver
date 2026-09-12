@@ -2,7 +2,7 @@
 ; SPDX-License-Identifier: GPL-3.0-only
 
 #define AppName "Sonulab StompPRO USB Driver"
-#define AppVersion "0.3.0"
+#define AppVersion "0.3.1"
 #define AppPublisher "Sonulab"
 #define DriverFile "SonulabStompProDriver.dll"
 
@@ -27,7 +27,7 @@ UninstallDisplayName={#AppName}
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
-VersionInfoVersion=0.3.0.0
+VersionInfoVersion=0.3.1.0
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} installer
 VersionInfoProductName={#AppName}
