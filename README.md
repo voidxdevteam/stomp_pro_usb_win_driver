@@ -1,133 +1,67 @@
 # Sonulab StompPRO USB Driver
 
-Open-source Windows audio driver for the Sonulab StompPRO USB Audio 2.0
-interface. The project is licensed under GNU GPL version 3 only.
+This driver lets you use StompPRO as a low-latency audio interface with ASIO
+applications on Windows. It provides two inputs and two outputs through a
+single full-duplex device, so recording and playback are available together.
 
-The driver exposes one full-duplex, ASIO-compatible device and uses the native
-Windows USB Audio 2.0 stack through exclusive, event-driven WASAPI:
+## System requirements
 
-- 2 capture channels and 2 playback channels;
-- 48 kHz, signed 32-bit little-endian PCM;
-- 128, 256, or 512-sample host buffers;
-- one hardware clock;
-- endpoint selection through the USB PnP hierarchy using `VID_1D6B&PID_0104`;
-- adaptive capture clock synchronization for stable full-duplex operation;
-- MMCSS `Pro Audio` scheduling for the callback thread.
+- Windows 10 version 1809 or newer, or Windows 11;
+- a 64-bit edition of Windows;
+- a 32-bit or 64-bit ASIO audio application;
+- a Sonulab StompPRO connected by USB.
 
-The Windows mixer and sample-rate conversion are bypassed. USB transport is
-provided by Microsoft's `usbaudio2.sys`; this project does not install a
-kernel-mode driver.
+ASIO4ALL and additional USB audio drivers are not required.
 
-## License
+## Installation
 
-Sonulab's source code is licensed under `GPL-3.0-only`; see [LICENSE](LICENSE).
-The ASIO SDK interface files under `third_party/asio` are copyright Steinberg
-Media Technologies GmbH and are used under their GPLv3 option. Their original
-notices and license are retained.
+1. Close your music and audio applications.
+2. Connect and switch on StompPRO.
+3. Run `Sonulab-StompPRO-USB-Driver-0.3.0-Setup.exe`.
+4. Approve the Windows administrator request and complete the installation.
+5. Reopen your audio application and select `Sonulab StompPRO USB Driver` as
+   its ASIO device.
 
-ASIO is a trademark and software of Steinberg Media Technologies GmbH. The
-trademark is used only to describe compatibility. It is not part of this
-product's name, and no ASIO logo is distributed.
+The current installer is unsigned. Windows may show an unknown-publisher or
+SmartScreen warning. Download the installer only from Sonulab or another source
+you trust, then use **More info > Run anyway** if Windows displays that prompt.
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the exact SDK version,
-official source URL, archive hash, and vendored files.
+## Recommended settings
 
-## Build
+The driver operates at 48 kHz and offers these buffer sizes:
 
-Requirements: Windows 10 or 11, Visual Studio 2022 with the Desktop C++
-workload, and CMake 3.24 or newer.
+- **256 samples:** recommended starting point;
+- **128 samples:** lower latency, with higher CPU demand;
+- **512 samples:** greater stability on slower or heavily loaded computers.
 
-The required ASIO SDK 2.3.4 interface files are included, so the repository is
-self-contained:
+StompPRO appears with two input channels and two output channels. Only one
+application can use the device in exclusive ASIO mode at a time.
 
-```powershell
-.\tools\build.ps1
-```
+## If the device is unavailable
 
-The x64 and x86 DLLs and smoke-test executables are written to
-`build\x64\Release` and `build\x86\Release`.
-Pass `-Architecture x64` or `-Architecture Win32` to build only one target.
+Try these steps in order:
 
-## Test without installation
+1. Close every application that may be using StompPRO, including browser tabs,
+   media players and other DAWs.
+2. Disconnect and reconnect the USB cable.
+3. Switch StompPRO off and on.
+4. Reopen the audio application and select the Sonulab driver again.
+5. If audio still stops or clicks, choose a 256- or 512-sample buffer and avoid
+   unpowered USB hubs.
 
-Connect the StompPRO, then run:
+If the driver does not appear in a 32-bit application, reinstall version 0.3.0.
+The installer includes separate drivers for both 32-bit and 64-bit applications.
 
-```powershell
-.\build\x64\Release\sonulab_asio_smoke.exe .\build\x64\Release\SonulabStompProDriver.dll 20 256
-```
+## Removal
 
-The smoke test opens both directions, outputs a 200 Hz tone, reads both capture
-channels, and reports callback timing and discontinuity notifications. With
-Out 1 connected to In 1, `capture_peak` should be nonzero.
+Close all audio applications, open **Windows Settings > Apps > Installed apps**,
+select **Sonulab StompPRO USB Driver**, and choose **Uninstall**.
 
-Run the equivalent x86 executable to validate the DLL used by 32-bit hosts:
+## License and source code
 
-```powershell
-.\build\x86\Release\sonulab_asio_smoke.exe .\build\x86\Release\SonulabStompProDriver.dll 20 256
-```
+The driver is free software licensed under GNU GPL version 3. The release also
+includes the complete corresponding source code, license and third-party
+notices. ASIO is a trademark and software of Steinberg Media Technologies GmbH.
 
-To retain and validate the complete captured waveform, pass a WAV path as the
-last argument and analyze it after the run:
-
-```powershell
-.\build\x64\Release\sonulab_asio_smoke.exe .\build\x64\Release\SonulabStompProDriver.dll 3600 256 .\test-results\loopback-60min.wav
-python .\tools\analyze-sine-recording.py .\test-results\loopback-60min.wav
-```
-
-Recording uses a preallocated single-producer/single-consumer queue. The audio
-callback only copies capture samples into that queue; a separate thread writes
-the WAV file. The final `record_dropped_blocks` value must be zero. The analyzer
-checks every window for silence, clipping, amplitude changes, residual error,
-sample steps, phase jumps, and DC offset.
-
-## Install for audio hosts
-
-Close audio applications and run the unsigned installer:
-
-`Sonulab-StompPRO-USB-Driver-0.3.0-Setup.exe`
-
-Windows requests administrator approval. The installer copies and registers the
-driver, includes the GPL license and source reference, and adds a standard entry
-to Windows Installed apps for removal. Windows may display an unknown-publisher
-warning because the installer is intentionally unsigned.
-
-For development builds, the PowerShell registration script remains available:
-
-```powershell
-.\tools\register-driver.ps1
-```
-
-The driver appears as `Sonulab StompPRO USB Driver` in compatible audio hosts.
-The installer supports both 64-bit and 32-bit ASIO hosts on 64-bit Windows.
-Windows 10 version 1809 or newer and Windows 11 are supported; a 64-bit edition
-of Windows is required.
-
-Test the same COM registration path used by an audio host with:
-
-```powershell
-.\build\x64\Release\sonulab_asio_smoke.exe --registered 20 256
-.\build\x86\Release\sonulab_asio_smoke.exe --registered 20 256
-```
-
-Remove the registration with:
-
-```powershell
-.\tools\unregister-driver.ps1
-```
-
-## Build the installer
-
-Install Inno Setup 6, then run:
-
-```powershell
-.\tools\build-installer.ps1
-```
-
-The unsigned setup executable is written to `dist`. The full release script
-builds the DLL, binary ZIP, source ZIP, installer, and SHA-256 manifest together.
-## Distributing binaries
-
-Every distributed DLL must be accompanied by access to the complete
-corresponding source for that exact release, including this repository, the
-vendored ASIO SDK interface files, and the build and installation scripts.
-A practical release should publish the source tag and binaries together.
+Developers and distributors can find build, test and release instructions in
+[DEVELOPMENT.md](DEVELOPMENT.md).

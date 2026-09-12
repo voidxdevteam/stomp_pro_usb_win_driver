@@ -53,7 +53,7 @@ New-Item -ItemType Directory -Path $dist -Force | Out-Null
 
 Copy-Item -LiteralPath $x64Dll -Destination (Join-Path $stage 'x64')
 Copy-Item -LiteralPath $x86Dll -Destination (Join-Path $stage 'x86')
-Copy-Item -LiteralPath (Join-Path $root 'README.md'),(Join-Path $root 'LICENSE'),(Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $root 'README.md'),(Join-Path $root 'DEVELOPMENT.md'),(Join-Path $root 'LICENSE'),(Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination $stage
 $commit = (& git -C $root rev-parse HEAD).Trim()
 @(
     "Corresponding source: Sonulab-StompPRO-USB-Driver-$version-source.zip"

@@ -42,6 +42,7 @@ Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 Source: "..\build\installer-stage\x64\{#DriverFile}"; DestDir: "{app}\x64"; Flags: ignoreversion regserver 64bit restartreplace uninsrestartdelete
 Source: "..\build\installer-stage\x86\{#DriverFile}"; DestDir: "{app}\x86"; Flags: ignoreversion regserver 32bit restartreplace uninsrestartdelete
 Source: "..\build\installer-stage\README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\build\installer-stage\DEVELOPMENT.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\installer-stage\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\installer-stage\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\installer-stage\SOURCE.txt"; DestDir: "{app}"; Flags: ignoreversion

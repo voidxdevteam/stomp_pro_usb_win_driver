@@ -35,7 +35,7 @@ Copy-Item -LiteralPath (Join-Path $root 'build\x64\Release\SonulabStompProDriver
 Copy-Item -LiteralPath (Join-Path $root 'build\x64\Release\sonulab_asio_smoke.exe') -Destination (Join-Path $binaryStage 'x64')
 Copy-Item -LiteralPath (Join-Path $root 'build\x86\Release\SonulabStompProDriver.dll') -Destination (Join-Path $binaryStage 'x86')
 Copy-Item -LiteralPath (Join-Path $root 'build\x86\Release\sonulab_asio_smoke.exe') -Destination (Join-Path $binaryStage 'x86')
-Copy-Item -LiteralPath (Join-Path $root 'README.md'),(Join-Path $root 'LICENSE'),(Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination $binaryStage
+Copy-Item -LiteralPath (Join-Path $root 'README.md'),(Join-Path $root 'DEVELOPMENT.md'),(Join-Path $root 'LICENSE'),(Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination $binaryStage
 Copy-Item -LiteralPath (Join-Path $root 'tools\register-driver.ps1'),(Join-Path $root 'tools\unregister-driver.ps1') -Destination (Join-Path $binaryStage 'tools')
 
 $commit = (& git -C $root rev-parse HEAD).Trim()
