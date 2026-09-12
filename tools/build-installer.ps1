@@ -8,13 +8,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$version = '0.2.1'
+$version = '0.3.0'
 $root = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root 'build'
 $stage = Join-Path $build 'installer-stage'
 $dist = Join-Path $root 'dist'
 $script = Join-Path $root 'installer\SonulabStompProUsbDriver.iss'
-$dll = Join-Path $build 'Release\SonulabStompProDriver.dll'
+$x64Dll = Join-Path $build 'x64\Release\SonulabStompProDriver.dll'
+$x86Dll = Join-Path $build 'x86\Release\SonulabStompProDriver.dll'
 $output = Join-Path $dist "Sonulab-StompPRO-USB-Driver-$version-Setup.exe"
 
 if (-not $SkipBuild) {
@@ -25,8 +26,8 @@ $changes = & git -C $root status --porcelain
 if ($LASTEXITCODE -ne 0 -or $changes) {
     throw 'Create the installer only from a clean Git commit.'
 }
-if (-not (Test-Path -LiteralPath $dll)) {
-    throw 'Release driver DLL not found.'
+if (-not (Test-Path -LiteralPath $x64Dll) -or -not (Test-Path -LiteralPath $x86Dll)) {
+    throw 'Both x64 and x86 release driver DLLs are required.'
 }
 
 $isccCandidates = @(
@@ -46,10 +47,12 @@ if (Test-Path -LiteralPath $stage) {
     }
     Remove-Item -LiteralPath $resolvedStage -Recurse -Force
 }
-New-Item -ItemType Directory -Path $stage -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stage 'x64') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $stage 'x86') -Force | Out-Null
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
 
-Copy-Item -LiteralPath $dll -Destination $stage
+Copy-Item -LiteralPath $x64Dll -Destination (Join-Path $stage 'x64')
+Copy-Item -LiteralPath $x86Dll -Destination (Join-Path $stage 'x86')
 Copy-Item -LiteralPath (Join-Path $root 'README.md'),(Join-Path $root 'LICENSE'),(Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination $stage
 $commit = (& git -C $root rev-parse HEAD).Trim()
 @(

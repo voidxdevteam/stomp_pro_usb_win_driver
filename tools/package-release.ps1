@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-$version = '0.2.1'
+$version = '0.3.0'
 $root = Split-Path -Parent $PSScriptRoot
 $dist = Join-Path $root 'dist'
 $binaryName = "Sonulab-StompPRO-USB-Driver-$version-win64"
@@ -27,10 +27,14 @@ if (Test-Path -LiteralPath $dist) {
     }
     Remove-Item -LiteralPath $resolvedDist -Recurse -Force
 }
+New-Item -ItemType Directory -Path (Join-Path $binaryStage 'x64') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $binaryStage 'x86') -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $binaryStage 'tools') -Force | Out-Null
 
-Copy-Item -LiteralPath (Join-Path $root 'build\Release\SonulabStompProDriver.dll') -Destination $binaryStage
-Copy-Item -LiteralPath (Join-Path $root 'build\Release\sonulab_asio_smoke.exe') -Destination $binaryStage
+Copy-Item -LiteralPath (Join-Path $root 'build\x64\Release\SonulabStompProDriver.dll') -Destination (Join-Path $binaryStage 'x64')
+Copy-Item -LiteralPath (Join-Path $root 'build\x64\Release\sonulab_asio_smoke.exe') -Destination (Join-Path $binaryStage 'x64')
+Copy-Item -LiteralPath (Join-Path $root 'build\x86\Release\SonulabStompProDriver.dll') -Destination (Join-Path $binaryStage 'x86')
+Copy-Item -LiteralPath (Join-Path $root 'build\x86\Release\sonulab_asio_smoke.exe') -Destination (Join-Path $binaryStage 'x86')
 Copy-Item -LiteralPath (Join-Path $root 'README.md'),(Join-Path $root 'LICENSE'),(Join-Path $root 'THIRD_PARTY_NOTICES.md') -Destination $binaryStage
 Copy-Item -LiteralPath (Join-Path $root 'tools\register-driver.ps1'),(Join-Path $root 'tools\unregister-driver.ps1') -Destination (Join-Path $binaryStage 'tools')
 

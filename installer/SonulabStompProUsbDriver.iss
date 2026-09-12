@@ -2,7 +2,7 @@
 ; SPDX-License-Identifier: GPL-3.0-only
 
 #define AppName "Sonulab StompPRO USB Driver"
-#define AppVersion "0.2.1"
+#define AppVersion "0.3.0"
 #define AppPublisher "Sonulab"
 #define DriverFile "SonulabStompProDriver.dll"
 
@@ -27,7 +27,7 @@ UninstallDisplayName={#AppName}
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
-VersionInfoVersion=0.2.1.0
+VersionInfoVersion=0.3.0.0
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} installer
 VersionInfoProductName={#AppName}
@@ -39,7 +39,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 
 [Files]
-Source: "..\build\installer-stage\{#DriverFile}"; DestDir: "{app}"; Flags: ignoreversion regserver 64bit restartreplace uninsrestartdelete
+Source: "..\build\installer-stage\x64\{#DriverFile}"; DestDir: "{app}\x64"; Flags: ignoreversion regserver 64bit restartreplace uninsrestartdelete
+Source: "..\build\installer-stage\x86\{#DriverFile}"; DestDir: "{app}\x86"; Flags: ignoreversion regserver 32bit restartreplace uninsrestartdelete
 Source: "..\build\installer-stage\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\installer-stage\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\installer-stage\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
